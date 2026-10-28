@@ -10,9 +10,18 @@ description: Auditer un projet PHP en lecture seule, inventorier fonctions et cl
 Inspecter les instructions locales, la documentation, `composer.json`, `composer.lock`,
 les images Docker, les fichiers de versions et la CI. Identifier les versions PHP
 ciblées, extensions, frameworks et répertoires de code, tests et dépendances.
-Utiliser `rg --files --hidden -g '*.php' -g '!.git/**'` en adaptant les exclusions
+Utiliser `rg --files --hidden -g '*.php' -g '*.module' -g '*.inc' -g '*.install' -g '*.theme' -g '*.profile' -g '*.engine' -g '*.phtml' -g '!.git/**'` en adaptant les exclusions
 au dépôt ; exclure explicitement `.git`. Consigner les fichiers ignorés, inaccessibles
 et générés. Séparer le code applicatif de `vendor` pour éviter les doublons.
+
+Pour Drupal et Symfony, repérer les fichiers de module Drupal, imports, classes
+parentes et dépendances Composer. Le scanner portable prend en charge le repli des
+fonctions globales depuis un namespace, les imports de fonctions et l'héritage local.
+Lancer `php scan.php --include-vendor` à la racine de l'outil si les dépendances sont
+présentes dans `sources/vendor`. Les méthodes des services injectés dont le type
+reste inconnu ne doivent pas être assimilées à des fonctions obsolètes.
+Après remplacement des exemples par un autre projet, utiliser une seule fois
+`--reset-history`, puis conserver le nouvel historique pour les corrections.
 
 Annoncer le périmètre retenu et les limites. Ne demander que les informations
 indispensables introuvables dans le dépôt. Sans version cible, analyser les versions

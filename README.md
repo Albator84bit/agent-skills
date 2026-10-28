@@ -54,13 +54,29 @@ Sans cette option, le scan est hors ligne.
 
 ## Fonctionnement et limites
 
-- Parcours récursif des fichiers `.php` ; exclusion de `.git`, `vendor`, `node_modules` et liens symboliques.
+- Parcours récursif des fichiers `.php`, `.inc`, `.module`, `.install`, `.theme`, `.profile`, `.engine` et `.phtml` ; exclusion de `.git`, `vendor`, `node_modules` et liens symboliques.
 - Lecture par tokenizer PHP : déclarations custom et appels directs, sans exécuter les sources.
 - Fonctions natives reconnues à partir du PHP du scanner et d'un catalogue historique avec migrations proposées.
 - Paquets recensés dans `composer.lock` et hôtes HTTP(S) littéraux repérés.
 - Rapport HTML Bootstrap, recherche, filtre, impression PDF et limites visibles.
 
-Ce premier scanner n'est pas exhaustif : résolution incomplète des méthodes, types, alias, namespaces, classes anonymes et appels dynamiques. Un appel non résolu reste « indéterminé ». Les constructions de langage ne sont pas des fonctions. Les classes natives et les symboles absents du runtime n'ont pas encore de catalogue complet. Les versions cibles et signatures ne sont pas testées.
+Les fonctions PHP non qualifiées dans un namespace utilisent le repli global quand aucune déclaration locale analysée n'existe. Les imports `use function`, alias et imports groupés sont reconnus. Les méthodes `$this`, `self`, `parent`, `static` et les classes explicites sont reliées aux déclarations et à l'héritage local quand disponibles.
+
+Ce scanner n'est pas exhaustif : les services injectés, types de variables, traits, classes anonymes et appels dynamiques ne sont pas tous résolus. Les imports sont traités dans leur ordre textuel. Le repli global reste à confirmer si une fonction homonyme peut être chargée hors du périmètre. Un appel non résolu reste « indéterminé », ce qui ne signifie pas « obsolète ». Les constructions de langage ne sont pas des fonctions. Les classes natives et les symboles absents du runtime n'ont pas encore de catalogue complet. Les versions cibles et signatures ne sont pas testées.
+
+### Drupal et Symfony
+
+Déposer le projet extrait avec ses fichiers PHP, ses fichiers Drupal `.module`/`.inc` et ses dépendances si vous souhaitez les inclure. Pour examiner aussi `vendor` :
+
+```sh
+php scan.php --include-vendor
+```
+
+Les déclarations dans `vendor` et `core/lib/Drupal` sont identifiées comme tierces. Les autres déclarations restent custom : un namespace Drupal ne prouve pas à lui seul qu'un module est tiers. Les méthodes héritées peuvent être résolues si leurs classes parentes figurent dans les fichiers analysés. Le scanner ne démarre ni Drupal ni Symfony et ne compile pas leurs conteneurs de services. Les appels de services dont le type n'est pas connu restent à vérifier.
+
+Si vous avez d'abord scanné les exemples puis remplacé leur code par votre projet, effacer **une seule fois** leur historique : `php scan.php --reset-history --include-vendor`. Aux scans suivants, garder le suivi : `php scan.php --include-vendor`.
+
+La console distingue fonctions natives, appels custom, fonctions non résolues et méthodes non résolues. « 0 fonctions historiques » veut dire qu'aucun appel du catalogue limité n'a été trouvé, pas que le projet est compatible ou sécurisé.
 
 Les dates de dépréciation/suppression sont des références locales à confirmer sur php.net.
 **Aucune base CVE/GHSA/OSV n'est interrogée automatiquement** : un paquet recensé n'est ni déclaré sûr ni déclaré vulnérable. La compétence d'agent explique comment compléter ces vérifications.
