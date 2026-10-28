@@ -21,7 +21,7 @@ emplacements. Cela constate son absence, sans garantir la validité de la migrat
 Les compteurs obsolètes/corrigés sont recalculés sur toutes les pages.
 
 Le suivi est conservé dans `reports/history.json` : gardez ce fichier entre les scans.
-Un fichier supprimé ou illisible, ou un scan incomplet, reste **à revérifier** (jaune)
+Un fichier supprimé ou illisible, ou un scan incomplet, reste **rouge, à revérifier**
 au lieu d'être déclaré corrigé. Si un appel réapparaît, sa ligne repasse au rouge.
 Les numéros de ligne peuvent changer sans perdre le suivi ; un renommage de fichier
 demande une revue manuelle. Pour changer de projet et effacer volontairement le suivi :

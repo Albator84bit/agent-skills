@@ -129,7 +129,7 @@ Prévoir une recherche, des filtres, des badges avec libellés explicites et une
 imprimable. Les informations doivent rester lisibles sans JavaScript. Le modèle
 affiche 15 lignes par page avec JavaScript. Conserver les lignes historiques des
 appels obsolètes : fond rouge si encore présents, vert si absents après un nouveau
-scan complet de leur fichier, jaune si leur état n'est pas vérifiable. Recalculer
+scan complet de leur fichier. Garder le fond rouge si leur état n'est pas vérifiable. Recalculer
 les compteurs globaux ; ne pas assimiler la disparition d'un appel à la validation
 du remplacement. Le scanner portable conserve le suivi dans `reports/history.json`.
 Ne pas livrer l'historique d'un autre projet dans une archive de distribution.
