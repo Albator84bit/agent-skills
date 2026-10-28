@@ -13,6 +13,20 @@ php scan.php
 4. Ouvrir **reports/rapport-audit-php.html** dans le navigateur.
 
 Chaque scan remplace le rapport. Le code du projet n'est jamais exécuté.
+Les tableaux affichent **15 lignes par page**, avec recherche et filtres.
+Les appels obsolètes ont un fond **rouge**. Après modification de vos sources,
+relancez `php scan.php` puis rechargez le rapport : un appel ancien qui a disparu
+d'un fichier toujours analysé passe au **vert**, en gardant sa ligne et ses anciens
+emplacements. Cela constate son absence, sans garantir la validité de la migration.
+Les compteurs obsolètes/corrigés sont recalculés sur toutes les pages.
+
+Le suivi est conservé dans `reports/history.json` : gardez ce fichier entre les scans.
+Un fichier supprimé ou illisible, ou un scan incomplet, reste **à revérifier** (jaune)
+au lieu d'être déclaré corrigé. Si un appel réapparaît, sa ligne repasse au rouge.
+Les numéros de ligne peuvent changer sans perdre le suivi ; un renommage de fichier
+demande une revue manuelle. Pour changer de projet et effacer volontairement le suivi :
+`php scan.php --reset-history`. Ne lancez pas deux scans simultanément.
+
 Pour une démonstration, garder les cinq exemples dans `sources` puis lancer la commande.
 Les originaux restent dans `examples/php56`.
 

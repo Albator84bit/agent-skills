@@ -59,13 +59,30 @@ function remote_page($url) {
     if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) { $code = (int)$m[1]; }
     return array($code, $body === false ? '' : $body);
 }
-function html_row($cells, $type) {
-    $s = '<tr data-record data-type="'.h($type).'">';
+function html_row($cells, $type, $status = '') {
+    $s = '<tr data-record data-type="'.h($type).'" data-status="'.h($status).'" class="status-'.h($status).'">';
     foreach ($cells as $cell) { $s .= '<td>'.h($cell).'</td>'; }
     return $s.'</tr>';
 }
 if (!$source || !is_dir($source)) { fwrite(STDERR, "Dossier sources introuvable.\n"); exit(1); }
-$files = array(); $locks = array(); $errors = array(); $excluded = 0;
+$historyPath = $root.'/reports/history.json';
+$history = array();
+if (is_file($historyPath) && !in_array('--reset-history', $argv, true)) {
+    $saved = json_decode(@file_get_contents($historyPath), true);
+    if (!is_array($saved) || !isset($saved['version'], $saved['records']) || $saved['version'] !== 1 || !is_array($saved['records'])) {
+        fwrite(STDERR, "Historique illisible : sauvegardez reports/history.json puis utilisez --reset-history si nécessaire.\n"); exit(1);
+    }
+    $history = $saved['records'];
+    foreach ($history as $record) {
+        if (!is_array($record) || !isset($record['file'], $record['cells']) || !is_string($record['file']) || !is_array($record['cells']) || count($record['cells']) !== 13) {
+            fwrite(STDERR, "Historique invalide ; aucun fichier écrasé.\n"); exit(1);
+        }
+        foreach ($record['cells'] as $value) {
+            if (!is_string($value)) { fwrite(STDERR, "Valeur d'historique invalide.\n"); exit(1); }
+        }
+    }
+}
+$files = array(); $locks = array(); $errors = array(); $excluded = 0; $readFiles = array();
 try {
     $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS));
     foreach ($iterator as $f) {
@@ -82,6 +99,7 @@ foreach ($files as $file) {
     $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($file, strlen($source)+1));
     $text = @file_get_contents($file);
     if ($text === false) { $errors[] = 'Lecture impossible : '.$relative; continue; }
+    $readFiles[$relative] = true;
     $tokens = significant(token_get_all($text)); $namespace = ''; $depth = 0; $class = ''; $classDepth = null; $pendingClass = null;
     for ($i=0, $n=count($tokens); $i<$n; $i++) {
         $t=$tokens[$i]; $prev=$i ? $tokens[$i-1] : array(0,'',0); $next=$i+1<$n ? $tokens[$i+1] : array(0,'',0);
@@ -109,7 +127,7 @@ foreach ($files as $file) {
         $nameToken = $t[0]===T_STRING || (defined('T_NAME_FULLY_QUALIFIED') && $t[0]===constant('T_NAME_FULLY_QUALIFIED')) || (defined('T_NAME_QUALIFIED') && $t[0]===constant('T_NAME_QUALIFIED'));
         if ($nameToken && $next[1]==='(' && !in_array($prev[0], array(T_FUNCTION,T_NEW),true) && $prev[1]!=='&') {
             $isMethod=in_array($prev[0],array(T_OBJECT_OPERATOR,T_DOUBLE_COLON),true) || (defined('T_NULLSAFE_OBJECT_OPERATOR') && $prev[0]===constant('T_NULLSAFE_OBJECT_OPERATOR'));
-            $calls[]=array('name'=>ltrim($t[1],'\\'), 'namespace'=>$namespace, 'global'=>substr($t[1],0,1)==='\\', 'method'=>$isMethod, 'location'=>$relative.':'.$t[2]);
+            $calls[]=array('name'=>ltrim($t[1],'\\'), 'namespace'=>$namespace, 'global'=>substr($t[1],0,1)==='\\', 'method'=>$isMethod, 'file'=>$relative, 'location'=>$relative.':'.$t[2]);
         }
     }
     // Ne conserver que les hôtes publics littéraux ; aucune URL complète ou clé.
@@ -125,12 +143,14 @@ foreach ($declarations as $d) {
 }
 $grouped=array();
 foreach ($calls as $c) {
-    $name=strtolower($c['name']); $key=($c['method']?'method:':'function:').($c['global']?'global:':$c['namespace'].':').$name;
+    $name=strtolower($c['name']); $key=$c['file'].'|'.($c['method']?'method:':'function:').($c['global']?'global:':$c['namespace'].':').$name;
     if (!isset($grouped[$key])) { $grouped[$key]=array($c,array()); }
     $grouped[$key][1][]=$c['location'];
 }
-foreach ($grouped as $group) {
+$seenHistory = array(); $observedNames = array();
+foreach ($grouped as $groupKey => $group) {
     $c=$group[0]; $name=strtolower($c['name']); $where=implode(', ',array_unique($group[1]));
+    $observedNames[$c['file'].'|'.$name] = true;
     $namespaced=strtolower(ltrim($c['namespace'].'\\'.$c['name'],'\\'));
     if ($c['method']) { $type='indéterminé'; $methodCount++; }
     elseif (isset($custom[$c['global']?$name:$namespaced])) { $type='custom'; }
@@ -156,7 +176,27 @@ foreach ($grouped as $group) {
             } else { $cells[12].=' — non consultée (utiliser --verify)'; }
         }
     }
-    $rows.=html_row($cells,$type); $count++;
+    if ($type === 'natif PHP' && isset($catalog[$name])) {
+        $id = hash('sha256', $groupKey);
+        $history[$id] = array('file'=>$c['file'], 'cells'=>$cells);
+        $seenHistory[$id] = true;
+    } else { $rows.=html_row($cells,$type); $count++; }
+}
+$activeCount = 0; $correctedCount = 0; $unverifiedCount = 0;
+foreach ($history as $id => $record) {
+    $cells = $record['cells'];
+    if (isset($seenHistory[$id])) {
+        $status = 'obsolete'; $activeCount++;
+        $cells[7] = 'Obsolète — appel toujours présent (catalogue)';
+    } elseif (isset($readFiles[$record['file']]) && !isset($observedNames[$record['file'].'|'.strtolower($cells[0])]) && !count($errors) && count($files)) {
+        $status = 'corrected'; $correctedCount++;
+        $cells[7] = 'Corrigé — appel ancien absent du fichier au dernier scan';
+        $cells[11] = 'Historique conservé ; disparition de cet appel observée, remplacement et comportement à valider.';
+    } else {
+        $status = 'unverified'; $unverifiedCount++;
+        $cells[7] = 'À revérifier — fichier absent, illisible ou scan incomplet';
+    }
+    $rows .= html_row($cells, 'natif PHP', $status); $count++;
 }
 $security=''; $packages=0;
 foreach ($locks as $lock) {
@@ -176,11 +216,12 @@ $template=@file_get_contents($root.'/skills/php-audit/assets/rapport.html');
 if ($template===false) { fwrite(STDERR,"Modèle HTML manquant.\n"); exit(1); }
 $date=date('c');
 $template=str_replace(array('Modèle — audit non exécuté','Projet : non renseigné','PHP cible : non renseigné','Date d’audit : non renseignée'),array('Analyse statique — vérifications partielles','Projet : sources','PHP cible : non évaluée · scanner : '.h(PHP_VERSION),'Date : '.h($date)),$template);
-$values=array(count($files),$count,count($historical).'*','?');
+$values=array(count($files),$count,$activeCount.'*','?');
 foreach ($values as $v) { $pos=strpos($template,'<span class="value">—</span>'); if ($pos!==false) { $template=substr_replace($template,'<span class="value">'.h($v).'</span>',$pos,strlen('<span class="value">—</span>')); } }
 $template=str_replace('À mesurer lors de l’analyse','Fichiers PHP trouvés',$template);
 $template=str_replace('À vérifier sur php.net','* Selon catalogue historique',$template);
 $template=str_replace('Selon les avis consultés','Avis de sécurité non interrogés',$template);
+$template=str_replace(array('{{ACTIVE}}','{{CORRECTED}}','{{UNVERIFIED}}'), array($activeCount,$correctedCount,$unverifiedCount), $template);
 if ($rows!=='') { $template=str_replace('<tr><td colspan="13" class="empty">L’inventaire apparaîtra ici après l’analyse d’un projet PHP.</td></tr>',$rows,$template); }
 if ($security!=='') { $template=str_replace('<tr><td colspan="10" class="empty">Aucune dépendance vérifiée : l’audit n’a pas encore été exécuté.</td></tr>',$security,$template); }
 else { $template=str_replace('Aucune dépendance vérifiée : l’audit n’a pas encore été exécuté.','Aucun paquet Composer ni hôte API littéral trouvé ; aucune conclusion de sécurité possible.',$template); }
@@ -192,8 +233,13 @@ $template=str_replace('Documenter les symboles dynamiques non résolus, les vers
 $out=$root.'/reports';
 if (!is_dir($out) && !@mkdir($out,0700,true)) { fwrite(STDERR,"Impossible de créer reports.\n"); exit(1); }
 if (@file_put_contents($out.'/rapport-audit-php.html',$template)===false) { fwrite(STDERR,"Écriture du rapport impossible.\n"); exit(1); }
+$historyJson = json_encode(array('version'=>1, 'records'=>$history), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+if ($historyJson === false || @file_put_contents($historyPath.'.tmp', $historyJson, LOCK_EX) === false || !@rename($historyPath.'.tmp', $historyPath)) {
+    fwrite(STDERR, "Rapport créé mais sauvegarde de l'historique impossible.\n"); exit(1);
+}
 echo "Rapport : ".$out."/rapport-audit-php.html\n";
 echo count($files)." fichiers PHP ; ".count($historical)." fonctions historiques ; ".$unresolved." groupes d'appels non résolus.\n";
 echo "Analyse partielle, sans exécution PHP ni audit CVE automatique.\n";
+echo $activeCount." obsolètes ; ".$correctedCount." corrigés (appels absents) ; ".$unverifiedCount." à revérifier.\n";
 if (!count($files)) { fwrite(STDERR,"Aucun fichier PHP dans sources.\n"); exit(2); }
 exit(count($errors)?1:0);
