@@ -1,0 +1,4 @@
+Deposez votre projet PHP extrait ici, avec sous-dossiers et composer.lock.
+Supprimez les cinq exemples 01_mysql.php a 05_locale.php avant votre propre audit.
+Depuis le dossier parent : php scan.php
+Rapport : reports/rapport-audit-php.html
